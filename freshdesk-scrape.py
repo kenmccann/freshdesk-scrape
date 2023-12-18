@@ -11,6 +11,7 @@ parser.add_argument('-a', '--all', help='Specify if all tickets should be return
 parser.add_argument('-r', '--range', help='Specify a range of tickets to be retrieved', type=int, nargs=2)
 parser.add_argument('-l', '--limit', help='Rate limit threshold to pause script execution', type=int, default=1500)
 parser.add_argument('-p', '--pause', help='Pause duration in seconds when rate limit is close', type=int, default=300)  # 300 seconds = 5 minutes
+parser.add_argument('-s', '--delay', help='Delay in seconds between API requests', type=int, default=0)
 
 args = parser.parse_args()
 
@@ -53,6 +54,7 @@ def fetch_tickets():
 
         # Call the rate limit check function
         check_rate_limit(rate_limit_remaining, rate_limit_total, args.pause)
+        time.sleep(args.delay)
 
         data = response.json()
         if data:
@@ -84,6 +86,7 @@ def fetch_conversations(ticket_id):
         print(f"Total Rate Limit: {rate_limit_total}")
         print(f"Remaining Rate Limit: {rate_limit_remaining}")
         print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
+        time.sleep(args.delay)
 
         data = response.json()
         if data:
