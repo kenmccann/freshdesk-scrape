@@ -19,25 +19,43 @@ auth = (api_key, 'X')
 
 # Function to fetch tickets
 def fetch_tickets():
-    url = f'https://{domain}.freshdesk.com/api/v2/tickets'
-    response = requests.get(url, auth=auth)
-    return response.json()
+    tickets = []
+    page = 1
+    while True:
+        url = f'https://{domain}.freshdesk.com/api/v2/tickets?page={page}'
+        response = requests.get(url, auth=auth)
+        data = response.json()
+        if data:
+            tickets.extend(data)
+            page += 1
+        else:
+            break
+    return tickets
 
 # Function to fetch conversations for a specific ticket
 def fetch_conversations(ticket_id):
-    url = f'https://{domain}.freshdesk.com/api/v2/tickets/{ticket_id}/conversations'
-    response = requests.get(url, auth=auth)
+    conversations = []
+    page = 1
+    while True:
+        url = f'https://{domain}.freshdesk.com/api/v2/tickets/{ticket_id}/conversations?page={page}'
+        response = requests.get(url, auth=auth)
 
-    # Checking the rate limit headers
-    rate_limit_total = response.headers.get('X-Ratelimit-Total')
-    rate_limit_remaining = response.headers.get('X-Ratelimit-Remaining')
-    rate_limit_used_current = response.headers.get('X-Ratelimit-Used-Currentrequest')
+        rate_limit_total = response.headers.get('X-Ratelimit-Total')
+        rate_limit_remaining = response.headers.get('X-Ratelimit-Remaining')
+        rate_limit_used_current = response.headers.get('X-Ratelimit-Used-Currentrequest')
 
-    print(f"Total Rate Limit: {rate_limit_total}")
-    print(f"Remaining Rate Limit: {rate_limit_remaining}")
-    print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
+        print(f"Total Rate Limit: {rate_limit_total}")
+        print(f"Remaining Rate Limit: {rate_limit_remaining}")
+        print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
 
-    return response.json()
+        data = response.json()
+        if data:
+            conversations.extend(data)
+            page += 1
+        else:
+            break
+    return conversations
+
 
 def fetch_ticket_range(int1, int2):
     ticket_range_data = []
