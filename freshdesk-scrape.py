@@ -45,13 +45,15 @@ def check_rate_limit(rate_limit_remaining, rate_limit_total, pause_duration):
 def fetch_tickets(updated_since=None):
     tickets = []
     page = 1
-    while True:
+    max_pages = 300  # Freshdesk API limit
+    while page <= max_pages:
         url = f'https://{domain}.freshdesk.com/api/v2/tickets?page={page}'
         if updated_since:
             url += f"&updated_since={updated_since}"
         response = requests.get(url, auth=auth)
-        if response.status_code is not 200:
-            print(f'Response code is {response.status_code} and body is {response.text}')
+        if response.status_code != 200:
+            print(f"Stopping at page {page}. Response code: {response.status_code}, Message: {response.text}")
+            break
 
         # Checking the rate limit headers
         rate_limit_remaining = response.headers.get('X-Ratelimit-Remaining', '0')
@@ -67,6 +69,8 @@ def fetch_tickets(updated_since=None):
             page += 1
         else:
             break
+
+        page += 1
     return tickets
 
 # Function to fetch conversations for a specific ticket
@@ -169,3 +173,12 @@ with open(filename, 'w') as file:
     json.dump(all_conversations, file)
     # Confirmation message
     print(f"Data successfully saved to {filename}")
+
+# Record ticket IDs and conversations file
+record_filename = f"processed_tickets_{timestamp}.txt"
+with open(record_filename, 'w') as record_file:
+    ticket_ids = [ticket['id'] for ticket in all_tickets]
+    record_file.write(f"Conversations for tickets: {ticket_ids}\n")
+    record_file.write(f"Saved in file: {filename}\n")
+
+print(f"Record of processed tickets saved to {record_filename}")
