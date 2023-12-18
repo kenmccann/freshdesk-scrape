@@ -142,3 +142,5 @@ filename = f"freshdesk_conversations_{timestamp}.json"
 # Save to a JSON file
 with open(filename, 'w') as file:
     json.dump(all_conversations, file)
+    # Confirmation message
+    print(f"Data successfully saved to {filename}")
