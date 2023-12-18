@@ -97,10 +97,13 @@ def fetch_conversations(ticket_id):
     return conversations
 
 
-def fetch_ticket_range(int1, int2):
+def fetch_ticket_range(int1, int2, all_tickets):
     ticket_range_data = []
     if int1 <= int2:
-        for ticket_id in range(int1, int2 + 1):
+        # Filter tickets that fall within the specified range
+        valid_ticket_ids = [ticket['id'] for ticket in all_tickets if int1 <= ticket['id'] <= int2]
+
+        for ticket_id in valid_ticket_ids:
             try:
                 conversations = fetch_conversations(ticket_id)
                 ticket_range_data.append({
@@ -117,6 +120,8 @@ def fetch_ticket_range(int1, int2):
 
 # Main execution
 all_conversations = []
+all_tickets = fetch_tickets() if args.all or args.range else []
+
 if args.all:
   tickets = fetch_tickets()
 
@@ -129,7 +134,7 @@ if args.all:
       })
 elif args.range:
     print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
-    all_conversations = fetch_ticket_range(args.range[0], args.range[1])
+    all_conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
 
 # Get the current date and time
 current_time = datetime.now()
