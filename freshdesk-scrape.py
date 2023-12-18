@@ -12,10 +12,11 @@ parser.add_argument('-r', '--range', help='Specify a range of tickets to be retr
 parser.add_argument('-l', '--limit', help='Rate limit threshold to pause script execution', type=int, default=1500)
 parser.add_argument('-p', '--pause', help='Pause duration in seconds when rate limit is close', type=int, default=300)  # 300 seconds = 5 minutes
 parser.add_argument('-s', '--delay', help='Delay in seconds between API requests', type=int, default=0)
+parser.add_argument('-u', '--updated_since', help='Fetch tickets updated since a specified date (format: YYYY-MM-DD)', type=str)
 
 args = parser.parse_args()
 
-# Your Freshdesk domain and API key
+# Freshdesk domain and API key
 domain = args.domain
 api_key = args.key
 
@@ -41,12 +42,16 @@ def check_rate_limit(rate_limit_remaining, rate_limit_total, pause_duration):
                 print(f"Waiting for rate limit to reset. Current remaining: {new_remaining}")
 
 # Function to fetch tickets
-def fetch_tickets():
+def fetch_tickets(updated_since=None):
     tickets = []
     page = 1
     while True:
         url = f'https://{domain}.freshdesk.com/api/v2/tickets?page={page}'
+        if updated_since:
+            url += f"&updated_since={updated_since}"
         response = requests.get(url, auth=auth)
+        if response.status_code is not 200:
+            print(f'Response code is {response.status_code} and body is {response.text}')
 
         # Checking the rate limit headers
         rate_limit_remaining = response.headers.get('X-Ratelimit-Remaining', '0')
@@ -54,7 +59,7 @@ def fetch_tickets():
 
         # Call the rate limit check function
         check_rate_limit(rate_limit_remaining, rate_limit_total, args.pause)
-        time.sleep(args.delay)
+        # time.sleep(args.delay)
 
         data = response.json()
         if data:
@@ -120,9 +125,20 @@ def fetch_ticket_range(int1, int2, all_tickets):
 
 # Main execution
 all_conversations = []
-all_tickets = fetch_tickets() if args.all or args.range else []
 
-if args.all:
+if args.updated_since:
+    print(f"Fetching tickets updated since {args.updated_since}")
+    all_tickets = fetch_tickets(args.updated_since)
+    for ticket in all_tickets:
+        ticket_id = ticket['id']
+        conversations = fetch_conversations(ticket_id)
+        all_conversations.append({
+            'ticket_id': ticket_id,
+            'conversations': conversations
+        })
+elif args.all:
+  all_tickets = fetch_tickets()
+  all_tickets = fetch_tickets() if args.all or args.range else []
   tickets = fetch_tickets()
 
   for ticket in tickets:
@@ -133,6 +149,7 @@ if args.all:
           'conversations': conversations
       })
 elif args.range:
+    all_tickets = fetch_tickets() if args.range else []
     print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
     all_conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
 
