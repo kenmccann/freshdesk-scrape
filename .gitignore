@@ -139,3 +139,7 @@ out/
 out
 *.json
 *-test.py
+*.db
+*.db.*
+*.db-*
+*.txt

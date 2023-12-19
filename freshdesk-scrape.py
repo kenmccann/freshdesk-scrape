@@ -3,6 +3,7 @@ import json
 import argparse
 from datetime import datetime
 import time
+import sqlite3
 
 parser = argparse.ArgumentParser(description='Tool for gathering and saving information from a Freshdesk instance.')
 parser.add_argument('-k', '--key', help='Freshdesk API key', default='', required=True)
@@ -47,7 +48,7 @@ def fetch_tickets(updated_since=None):
     page = 1
     max_pages = 300  # Freshdesk API limit
     while page <= max_pages:
-        url = f'https://{domain}.freshdesk.com/api/v2/tickets?page={page}'
+        url = f'https://{domain}.freshdesk.com/api/v2/tickets?include=description&page={page}'
         if updated_since:
             url += f"&updated_since={updated_since}"
         response = requests.get(url, auth=auth)
@@ -125,48 +126,113 @@ def fetch_ticket_range(int1, int2, all_tickets):
         print("Invalid range: int1 should be less than or equal to int2")
     return ticket_range_data
 
-        
+
+def store_ticket(ticket, cursor):
+    # Check if the ticket is already in the database
+    cursor.execute('SELECT * FROM tickets WHERE id = ?', (ticket['id'],))
+    if cursor.fetchone() is None:
+        # Ticket not in database, insert it
+        cursor.execute('INSERT INTO tickets (id, created_at, updated_at, subject, description, severity, region, other_ticket_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                       (ticket['id'], ticket['created_at'], ticket['updated_at'], ticket['subject'], ticket['description_text'], ticket['custom_fields']['severity'], ticket['custom_fields']['cf_ticket_region'], json.dumps(ticket)))
+        return True  # Indicates the ticket was stored
+    return False  # Indicates the ticket was already in the database
+
+def store_conversation(ticket_id, conversation, cursor):
+    # Check for existing conversation to avoid duplicates
+    cursor.execute('SELECT * FROM conversations WHERE ticket_id = ? AND created_at = ? AND body = ?',
+                   (ticket_id, conversation['created_at'], conversation['body']))
+    if cursor.fetchone() is None:
+        # Conversation not in database, insert it
+        cursor.execute('INSERT INTO conversations (ticket_id, created_at, body) VALUES (?, ?, ?)',
+                       (ticket_id, conversation['created_at'], conversation['body']))
+
 
 # Main execution
 all_conversations = []
+
+# Establish a connection to the SQLite database
+conn = sqlite3.connect('tickets.db')
+cursor = conn.cursor()
+
+# SQL to create 'tickets' table
+create_tickets_table = '''
+CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT,
+    updated_at TEXT,
+    subject TEXT,
+    description TEXT,
+    severity TEXT,
+    region TEXT,
+    other_ticket_info TEXT
+)
+'''
+
+# SQL to create 'conversations' table
+create_conversations_table = '''
+CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER,
+    created_at TEXT,
+    body TEXT,
+    FOREIGN KEY (ticket_id) REFERENCES tickets (id)
+)
+'''
+
+# Execute the SQL commands to create the tables
+cursor.execute(create_tickets_table)
+cursor.execute(create_conversations_table)
 
 if args.updated_since:
     print(f"Fetching tickets updated since {args.updated_since}")
     all_tickets = fetch_tickets(args.updated_since)
     for ticket in all_tickets:
         ticket_id = ticket['id']
+
+        if store_ticket(ticket, cursor):
+            print(f"Stored ticket ID {ticket_id} in the database.")
+        else:
+            print(f"Ticket ID {ticket_id} is already in the database.")
+
         conversations = fetch_conversations(ticket_id)
+        for conversation in conversations:
+            store_conversation(ticket['id'], conversation, cursor)
         all_conversations.append({
             'ticket_id': ticket_id,
             'conversations': conversations
         })
 elif args.all:
-  all_tickets = fetch_tickets()
-  all_tickets = fetch_tickets() if args.all or args.range else []
-  tickets = fetch_tickets()
+    tickets = fetch_tickets()
 
-  for ticket in tickets:
-      ticket_id = ticket['id']
-      conversations = fetch_conversations(ticket_id)
-      all_conversations.append({
-          'ticket_id': ticket_id,
-          'conversations': conversations
-      })
+    for ticket in tickets:
+        ticket_id = ticket['id']
+
+    if store_ticket(ticket, cursor):
+        print(f"Stored ticket ID {ticket_id} in the database.")
+    else:
+        print(f"Ticket ID {ticket_id} is already in the database.")
+
+        conversations = fetch_conversations(ticket_id)
+        for conversation in conversations:
+            store_conversation(ticket['id'], conversation, cursor)
+        all_conversations.append({
+            'ticket_id': ticket_id,
+            'conversations': conversations
+        })
 elif args.range:
     all_tickets = fetch_tickets() if args.range else []
     print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
-    all_conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
+    conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
+    for conversation in conversations:
+        store_conversation(conversation['ticket_id'], conversation, cursor)
+    all_conversations = conversations
 
-# Get the current date and time
+conn.commit()
+conn.close()
+
 current_time = datetime.now()
-
-# Format the date and time into a string suitable for a filename
-# Example format: '20231213-151230' for 'YYYYMMDD-HHMMSS'
 timestamp = current_time.strftime("%Y%m%d-%H%M%S")
-
-# Create a unique filename using the timestamp
 filename = f"freshdesk_conversations_{timestamp}.json"
-
 
 # Save to a JSON file
 with open(filename, 'w') as file:
