@@ -140,12 +140,12 @@ def store_ticket(ticket, cursor):
 
 def store_conversation(ticket_id, conversation, cursor):
     # Check for existing conversation to avoid duplicates
-    cursor.execute('SELECT * FROM conversations WHERE ticket_id = ? AND created_at = ? AND body = ?',
-                   (ticket_id, conversation['created_at'], conversation['body']))
+    cursor.execute('SELECT * FROM conversations WHERE conversation_id = ?',
+                   (conversation['conversation_id']))
     if cursor.fetchone() is None:
         # Conversation not in database, insert it
-        cursor.execute('INSERT INTO conversations (ticket_id, created_at, body) VALUES (?, ?, ?)',
-                       (ticket_id, conversation['created_at'], conversation['body_text']))
+        cursor.execute('INSERT INTO conversations (ticket_id, conversation_id, created_at, body) VALUES (?, ?, ?, ?)',
+                       (ticket_id, conversation['id'], conversation['created_at'], conversation['body_text']))
 
 
 def strip_email_headers(description):
@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS tickets (
 create_conversations_table = '''
 CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER,
     ticket_id INTEGER,
     created_at TEXT,
     body TEXT,
