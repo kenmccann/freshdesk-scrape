@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 import time
 import sqlite3
+import re
 
 parser = argparse.ArgumentParser(description='Tool for gathering and saving information from a Freshdesk instance.')
 parser.add_argument('-k', '--key', help='Freshdesk API key', default='', required=True)
@@ -133,7 +134,7 @@ def store_ticket(ticket, cursor):
     if cursor.fetchone() is None:
         # Ticket not in database, insert it
         cursor.execute('INSERT INTO tickets (id, created_at, updated_at, subject, description, severity, region, other_ticket_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                       (ticket['id'], ticket['created_at'], ticket['updated_at'], ticket['subject'], ticket['description_text'], ticket['custom_fields']['severity'], ticket['custom_fields']['cf_ticket_region'], json.dumps(ticket)))
+                       (ticket['id'], ticket['created_at'], ticket['updated_at'], ticket['subject'], strip_email_headers(ticket['description_text']), ticket['custom_fields']['severity'], ticket['custom_fields']['cf_ticket_region'], json.dumps(ticket)))
         return True  # Indicates the ticket was stored
     return False  # Indicates the ticket was already in the database
 
@@ -144,8 +145,33 @@ def store_conversation(ticket_id, conversation, cursor):
     if cursor.fetchone() is None:
         # Conversation not in database, insert it
         cursor.execute('INSERT INTO conversations (ticket_id, created_at, body) VALUES (?, ?, ?)',
-                       (ticket_id, conversation['created_at'], conversation['body']))
+                       (ticket_id, conversation['created_at'], conversation['body_text']))
 
+
+def strip_email_headers(description):
+    """
+    Strips email headers from the ticket description.
+
+    Args:
+    description (str): The description field of the ticket.
+
+    Returns:
+    str: The description with email headers removed.
+    """
+    # Regular expression to identify potential end of headers
+    # This regex looks for two consecutive newline characters which often separate headers from the body
+    end_of_headers_regex = r"(\r?\n){2,}"
+
+    # Find the end of the headers using regex
+    match = re.search(end_of_headers_regex, description)
+    
+    if match:
+        # Get the index where the body starts
+        start_idx = match.end()
+        return description[start_idx:].strip()
+    else:
+        # If no pattern is found, return the original description
+        return description
 
 # Main execution
 all_conversations = []
