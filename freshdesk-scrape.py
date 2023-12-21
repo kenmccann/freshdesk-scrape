@@ -247,7 +247,7 @@ elif args.all:
             'conversations': conversations
         })
 elif args.range:
-    all_tickets = fetch_tickets() if args.range else []
+    all_tickets = fetch_tickets()
     print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
     conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
     for conversation in conversations:
