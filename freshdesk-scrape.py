@@ -187,7 +187,7 @@ def strip_email_headers(description):
         return description
 
 # Main execution
-all_conversations = []
+# all_conversations = []
 
 # Establish a connection to the SQLite database
 database_file = 'tickets.db'
@@ -240,10 +240,10 @@ if args.updated_since:
         conversations = fetch_conversations(ticket_id)
         for conversation in conversations:
             store_conversation(ticket['id'], conversation, cursor)
-        all_conversations.append({
-            'ticket_id': ticket_id,
-            'conversations': conversations
-        })
+        # all_conversations.append({
+        #     'ticket_id': ticket_id,
+        #     'conversations': conversations
+        # })
 elif args.all:
     tickets = fetch_tickets()
 
@@ -258,17 +258,17 @@ elif args.all:
         conversations = fetch_conversations(ticket_id)
         for conversation in conversations:
             store_conversation(ticket['id'], conversation, cursor)
-        all_conversations.append({
-            'ticket_id': ticket_id,
-            'conversations': conversations
-        })
+        # all_conversations.append({
+        #     'ticket_id': ticket_id,
+        #     'conversations': conversations
+        # })
 elif args.range:
     all_tickets = fetch_tickets()
     print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
     conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
     for conversation in conversations:
         store_conversation(conversation['ticket_id'], conversation, cursor)
-    all_conversations = conversations
+    # all_conversations = conversations
 
 conn.commit()
 conn.close()
