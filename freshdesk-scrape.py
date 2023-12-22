@@ -17,6 +17,7 @@ parser.add_argument('-p', '--pause', help='Pause duration in seconds when rate l
 parser.add_argument('-s', '--delay', help='Delay in seconds between API requests', type=int, default=0)
 parser.add_argument('-u', '--updated_since', help='Fetch tickets updated since a specified date (format: YYYY-MM-DD)', type=str)
 parser.add_argument('-D', '--debug', help='Enable debug messaging to the console output', required=False, action='store_true')
+parser.add_argument('-e', '--export', help='Select this mode for exporting the ticket data', required=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -150,8 +151,10 @@ def store_conversation(ticket_id, conversation, cursor):
         isIncoming = conversation['incoming']
         isPrivate = conversation['private']
         persona = ''
-        if isIncoming:
+        if isIncoming and not isPrivate:
             persona = 'Customer'
+        elif isIncoming and isPrivate:
+            persona = "Aqua Development Discussion"
         elif not isIncoming and not isPrivate:
             persona = 'Aqua Support Agent'
         elif not isIncoming and isPrivate:
@@ -275,6 +278,52 @@ elif args.range:
     for conversation in conversations:
         store_conversation(conversation['ticket_id'], conversation, cursor)
     # all_conversations = conversations
+elif args.export:
+    tqdm.write("Exporting ticket data...")
+
+    # Querying the database for tickets and conversations
+    with sqlite3.connect(database_file) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tickets")
+        tickets = cursor.fetchall()
+
+        # Preparing data structure for JSON export
+        tickets_data = []
+        for ticket in tickets:
+            ticket_id, created_at, updated_at, subject, description, severity, region, other_ticket_info = ticket
+            cursor.execute("SELECT * FROM conversations WHERE ticket_id = ? ORDER BY created_at", (ticket_id,))
+            conversations = cursor.fetchall()
+
+            # Organizing conversations
+            conversation_data = []
+            for conversation in conversations:
+                _, conversation_id, _, created_at, persona, body = conversation
+                if persona in ['Aqua Development Discussion','Aqua Internal Discussion']: continue  # Focus only on Support/Customer convos
+                conversation_data.append({
+                    "conversation_id": conversation_id,
+                    "created_at": created_at,
+                    "persona": persona,
+                    "body": body
+                })
+
+            # Organizing ticket data
+            tickets_data.append({
+                "ticket_id": ticket_id,
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "subject": subject,
+                "description": description,
+                "severity": severity,
+                "region": region,
+                "conversations": conversation_data
+            })
+
+    # Writing data to JSON file
+    export_filename = f"exported_tickets_{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    with open(export_filename, 'w', encoding='utf-8') as file:
+        json.dump(tickets_data, file, ensure_ascii=False, indent=4)
+
+    tqdm.write(f"Ticket data exported to {export_filename}")
 
 conn.commit()
 conn.close()
