@@ -140,12 +140,21 @@ def store_ticket(ticket, cursor):
 
 def store_conversation(ticket_id, conversation, cursor):
     # Check for existing conversation to avoid duplicates
-    cursor.execute('SELECT * FROM conversations WHERE conversation_id = ?',
-                   (conversation['conversation_id']))
+    cursor.execute('SELECT * FROM conversations WHERE conversation_id = ?', (conversation['id'],))
     if cursor.fetchone() is None:
         # Conversation not in database, insert it
-        cursor.execute('INSERT INTO conversations (ticket_id, conversation_id, created_at, body) VALUES (?, ?, ?, ?)',
-                       (ticket_id, conversation['id'], conversation['created_at'], conversation['body_text']))
+        isIncoming = conversation['incoming']
+        isPrivate = conversation['private']
+        persona = ''
+        if isIncoming:
+            persona = 'Customer'
+        elif not isIncoming and not isPrivate:
+            persona = 'Aqua Support Agent'
+        elif not isIncoming and isPrivate:
+            persona = 'Aqua Internal Discussion'
+        else: persona = 'Unknown User'
+        cursor.execute('INSERT INTO conversations (ticket_id, conversation_id, created_at, persona, body) VALUES (?, ?, ?, ?, ?)',
+                       (ticket_id, conversation['id'], conversation['created_at'], persona, conversation['body_text']))
 
 
 def strip_email_headers(description):
@@ -201,6 +210,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     conversation_id INTEGER,
     ticket_id INTEGER,
     created_at TEXT,
+    persona TEXT,
     body TEXT,
     FOREIGN KEY (ticket_id) REFERENCES tickets (id)
 )
@@ -220,6 +230,7 @@ if args.updated_since:
             print(f"Stored ticket ID {ticket_id} in the database.")
         else:
             print(f"Ticket ID {ticket_id} is already in the database.")
+            continue # Don't attempt to store further conversations - assume they're already there
 
         conversations = fetch_conversations(ticket_id)
         for conversation in conversations:
