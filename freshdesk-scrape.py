@@ -30,7 +30,7 @@ auth = (api_key, 'X')
 # Rate limit handling
 def check_rate_limit(rate_limit_remaining, rate_limit_total, pause_duration):
     if int(rate_limit_remaining) <= args.limit:
-        print("Approaching rate limit. Pausing execution...")
+        tqdm.write("Approaching rate limit. Pausing execution...")
         while True:
             time.sleep(pause_duration)  # Pause for the specified duration
 
@@ -40,10 +40,10 @@ def check_rate_limit(rate_limit_remaining, rate_limit_total, pause_duration):
             new_total = int(response.headers.get('X-Ratelimit-Total', 1))
 
             if new_remaining >= 0.9 * new_total:  # Check if the rate limit has reset to within 90% of the total
-                print("Resuming execution...")
+                tqdm.write("Resuming execution...")
                 break
             else:
-                print(f"Waiting for rate limit to reset. Current remaining: {new_remaining}")
+                tqdm.write(f"Waiting for rate limit to reset. Current remaining: {new_remaining}")
 
 # Function to fetch tickets
 def fetch_tickets(updated_since=None):
@@ -56,7 +56,7 @@ def fetch_tickets(updated_since=None):
             url += f"&updated_since={updated_since}"
         response = requests.get(url, auth=auth)
         if response.status_code != 200:
-            print(f"Stopping at page {page}. Response code: {response.status_code}, Message: {response.text}")
+            tqdm.write(f"Stopping at page {page}. Response code: {response.status_code}, Message: {response.text}")
             break
 
         # Checking the rate limit headers
@@ -97,9 +97,9 @@ def fetch_conversations(ticket_id):
         rate_limit_used_current = response.headers.get('X-Ratelimit-Used-Currentrequest')
 
         if args.debug:
-            print(f"Total Rate Limit: {rate_limit_total}")
-            print(f"Remaining Rate Limit: {rate_limit_remaining}")
-            print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
+            tqdm.write(f"Total Rate Limit: {rate_limit_total}")
+            tqdm.write(f"Remaining Rate Limit: {rate_limit_remaining}")
+            tqdm.write(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
 
         time.sleep(args.delay)
 
@@ -126,9 +126,9 @@ def fetch_ticket_range(int1, int2, all_tickets):
                     'conversations': conversations
                 })
             except requests.exceptions.RequestException as e:
-                print(f"Error fetching data for ticket ID {ticket_id}: {e}")
+                tqdm.write(f"Error fetching data for ticket ID {ticket_id}: {e}")
     else:
-        print("Invalid range: int1 should be less than or equal to int2")
+        tqdm.write("Invalid range: int1 should be less than or equal to int2")
     return ticket_range_data
 
 
@@ -189,6 +189,9 @@ def strip_email_headers(description):
 # Main execution
 # all_conversations = []
 
+# Create a global tqdm instance for writing messages
+global_pbar = None
+
 # Establish a connection to the SQLite database
 database_file = 'tickets.db'
 conn = sqlite3.connect(database_file)
@@ -228,13 +231,14 @@ cursor.execute(create_conversations_table)
 if args.updated_since:
     print(f"Fetching tickets updated since {args.updated_since}")
     all_tickets = fetch_tickets(args.updated_since)
-    for ticket in tqdm(all_tickets, desc="Processing tickets", unit="ticket"):
+    global_pbar = tqdm(all_tickets, desc="Processing tickets", unit="ticket")
+    for ticket in global_pbar:
         ticket_id = ticket['id']
 
         if store_ticket(ticket, cursor):
-            if args.debug: print(f"Stored ticket ID {ticket_id} in the database.")
+            if args.debug: tqdm.write(f"Stored ticket ID {ticket_id} in the database.")
         else:
-            if args.debug: print(f"Ticket ID {ticket_id} is already in the database.")
+            if args.debug: tqdm.write(f"Ticket ID {ticket_id} is already in the database.")
             continue # Don't attempt to store further conversations - assume they're already there
 
         conversations = fetch_conversations(ticket_id)
@@ -247,13 +251,15 @@ if args.updated_since:
 elif args.all:
     tickets = fetch_tickets()
 
-    for ticket in tickets:
+    global_pbar = tqdm(tickets, desc="Processing tickets", unit="ticket")
+    for ticket in global_pbar:
         ticket_id = ticket['id']
 
-    if store_ticket(ticket, cursor):
-        print(f"Stored ticket ID {ticket_id} in the database.")
-    else:
-        print(f"Ticket ID {ticket_id} is already in the database.")
+        if store_ticket(ticket, cursor):
+            if args.debug: tqdm.write(f"Stored ticket ID {ticket_id} in the database.")
+        else:
+            if args.debug: tqdm.write(f"Ticket ID {ticket_id} is already in the database.")
+            continue # Don't attempt to store further conversations - assume they're already there
 
         conversations = fetch_conversations(ticket_id)
         for conversation in conversations:
@@ -264,7 +270,7 @@ elif args.all:
         # })
 elif args.range:
     all_tickets = fetch_tickets()
-    print(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
+    tqdm.write(f"Gathering ticket range: {args.range[0]} - {args.range[1]}" )
     conversations = fetch_ticket_range(args.range[0], args.range[1], all_tickets)
     for conversation in conversations:
         store_conversation(conversation['ticket_id'], conversation, cursor)
@@ -283,4 +289,4 @@ conn.close()
 #     record_file.write(f"Conversations for tickets: {ticket_ids}\n")
 #     record_file.write(f"Saved in file: {filename}\n")
 
-print(f"All tickets and conversations saved to {database_file}")
+tqdm.write(f"All tickets and conversations saved to {database_file}")
