@@ -5,6 +5,7 @@ from datetime import datetime
 import time
 import sqlite3
 import re
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='Tool for gathering and saving information from a Freshdesk instance.')
 parser.add_argument('-k', '--key', help='Freshdesk API key', default='', required=True)
@@ -15,6 +16,7 @@ parser.add_argument('-l', '--limit', help='Rate limit threshold to pause script 
 parser.add_argument('-p', '--pause', help='Pause duration in seconds when rate limit is close', type=int, default=300)  # 300 seconds = 5 minutes
 parser.add_argument('-s', '--delay', help='Delay in seconds between API requests', type=int, default=0)
 parser.add_argument('-u', '--updated_since', help='Fetch tickets updated since a specified date (format: YYYY-MM-DD)', type=str)
+parser.add_argument('-D', '--debug', help='Enable debug messaging to the console output', required=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -94,9 +96,11 @@ def fetch_conversations(ticket_id):
         #rate_limit_remaining = response.headers.get('X-Ratelimit-Remaining')
         rate_limit_used_current = response.headers.get('X-Ratelimit-Used-Currentrequest')
 
-        print(f"Total Rate Limit: {rate_limit_total}")
-        print(f"Remaining Rate Limit: {rate_limit_remaining}")
-        print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
+        if args.debug:
+            print(f"Total Rate Limit: {rate_limit_total}")
+            print(f"Remaining Rate Limit: {rate_limit_remaining}")
+            print(f"Rate Limit Used in Current Request: {rate_limit_used_current}")
+
         time.sleep(args.delay)
 
         data = response.json()
@@ -186,7 +190,8 @@ def strip_email_headers(description):
 all_conversations = []
 
 # Establish a connection to the SQLite database
-conn = sqlite3.connect('tickets.db')
+database_file = 'tickets.db'
+conn = sqlite3.connect(database_file)
 cursor = conn.cursor()
 
 # SQL to create 'tickets' table
@@ -223,13 +228,13 @@ cursor.execute(create_conversations_table)
 if args.updated_since:
     print(f"Fetching tickets updated since {args.updated_since}")
     all_tickets = fetch_tickets(args.updated_since)
-    for ticket in all_tickets:
+    for ticket in tqdm(all_tickets, desc="Processing tickets", unit="ticket"):
         ticket_id = ticket['id']
 
         if store_ticket(ticket, cursor):
-            print(f"Stored ticket ID {ticket_id} in the database.")
+            if args.debug: print(f"Stored ticket ID {ticket_id} in the database.")
         else:
-            print(f"Ticket ID {ticket_id} is already in the database.")
+            if args.debug: print(f"Ticket ID {ticket_id} is already in the database.")
             continue # Don't attempt to store further conversations - assume they're already there
 
         conversations = fetch_conversations(ticket_id)
@@ -268,21 +273,14 @@ elif args.range:
 conn.commit()
 conn.close()
 
-current_time = datetime.now()
-timestamp = current_time.strftime("%Y%m%d-%H%M%S")
-filename = f"freshdesk_conversations_{timestamp}.json"
-
-# Save to a JSON file
-with open(filename, 'w') as file:
-    json.dump(all_conversations, file)
-    # Confirmation message
-    print(f"Data successfully saved to {filename}")
+# current_time = datetime.now()
+# timestamp = current_time.strftime("%Y%m%d-%H%M%S")
 
 # Record ticket IDs and conversations file
-record_filename = f"processed_tickets_{timestamp}.txt"
-with open(record_filename, 'w') as record_file:
-    ticket_ids = [ticket['id'] for ticket in all_tickets]
-    record_file.write(f"Conversations for tickets: {ticket_ids}\n")
-    record_file.write(f"Saved in file: {filename}\n")
+# record_filename = f"processed_tickets_{timestamp}.txt"
+# with open(record_filename, 'w') as record_file:
+#     ticket_ids = [ticket['id'] for ticket in all_tickets]
+#     record_file.write(f"Conversations for tickets: {ticket_ids}\n")
+#     record_file.write(f"Saved in file: {filename}\n")
 
-print(f"Record of processed tickets saved to {record_filename}")
+print(f"All tickets and conversations saved to {database_file}")
