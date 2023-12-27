@@ -27,19 +27,21 @@ def normalize_text(text):
 
     return text
 
-def format_conversation_entry_to_jsonl(ticket_id, subject, conversation):
+def format_initial_context_to_jsonl(ticket_id, subject, description):
     """
-    Format a single conversation entry into a JSONL line with context.
+    Format the initial context (ticket_id, subject, description) into a JSONL line.
     """
-    # Include ticket ID and subject for context
-    context = f"Ticket ID: {ticket_id} Subject: {normalize_text(subject)} "
+    context = f"Ticket ID: {ticket_id} Subject: {normalize_text(subject)} Description: {normalize_text(description)}"
+    return context
 
-    # Add conversation entry
+def format_conversation_entry_to_jsonl(ticket_id, conversation):
+    """
+    Format a single conversation entry into a JSONL line with the ticket_id.
+    """
     persona = conversation['persona']
     body = normalize_text(conversation['body'])
-    full_text = context + f"{persona}: {body} "
-
-    return json.dumps({"text": full_text})
+    full_text = f"Ticket ID: {ticket_id} {persona}: {body}"
+    return full_text
 
 
 def split_data(tickets, split_ratio=0.8):
@@ -59,24 +61,40 @@ def tokenize_and_count(text, tokenizer):
 
 def process_tickets(input_file, split_ratio=0.8):
     """
-    Process a list of tickets from the input file and save each conversation entry as a separate JSONL line.
+    Process a list of tickets from the input file, save the initial context and each conversation entry as separate JSONL lines, 
+    and calculate token count statistics.
     """
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+
     with open(input_file, 'r', encoding='utf-8') as file:
         tickets = json.load(file)
 
     training_tickets, validation_tickets = split_data(tickets, split_ratio)
+    training_token_counts = []
+    validation_token_counts = []
 
     with open('training_data.jsonl', 'w', encoding='utf-8') as train_file, open('validation_data.jsonl', 'w', encoding='utf-8') as valid_file:
         for ticket in training_tickets:
+            initial_context = format_initial_context_to_jsonl(ticket['ticket_id'], ticket['subject'], ticket['description'])
+            train_file.write(json.dumps({"text": initial_context}) + '\n')
+            token_count = tokenize_and_count(initial_context, tokenizer)
+            training_token_counts.append(token_count)
             for conversation in ticket['conversations']:
-                jsonl_line = format_conversation_entry_to_jsonl(ticket['ticket_id'], ticket['subject'], conversation)
-                train_file.write(jsonl_line + '\n')
+                jsonl_line = format_conversation_entry_to_jsonl(ticket['ticket_id'], conversation)
+                train_file.write(json.dumps({"text": jsonl_line}) + '\n')
+                token_count = tokenize_and_count(jsonl_line, tokenizer)
+                training_token_counts.append(token_count)
 
         for ticket in validation_tickets:
+            initial_context = format_initial_context_to_jsonl(ticket['ticket_id'], ticket['subject'], ticket['description'])
+            valid_file.write(json.dumps({"text": initial_context}) + '\n')
+            token_count = tokenize_and_count(initial_context, tokenizer)
+            validation_token_counts.append(token_count)
             for conversation in ticket['conversations']:
-                jsonl_line = format_conversation_entry_to_jsonl(ticket['ticket_id'], ticket['subject'], conversation)
-                valid_file.write(jsonl_line + '\n')
-
+                jsonl_line = format_conversation_entry_to_jsonl(ticket['ticket_id'], conversation)
+                valid_file.write(json.dumps({"text": jsonl_line}) + '\n')
+                token_count = tokenize_and_count(jsonl_line, tokenizer)
+                validation_token_counts.append(token_count)
 
     # Function to calculate and display statistics
     def display_stats(token_counts, dataset_name):
@@ -85,16 +103,9 @@ def process_tickets(input_file, split_ratio=0.8):
         avg_tokens = sum(token_counts) / len(token_counts)
         print(f"{dataset_name} - Min Tokens: {min_tokens}, Max Tokens: {max_tokens}, Average Tokens: {avg_tokens}")
 
-        # # Displaying a simple histogram (token ranges)
-        # from collections import Counter
-        # ranges = Counter((x // 50 * 50 for x in token_counts))
-        # for range_start, count in sorted(ranges.items()):
-        #     print(f"Tokens {range_start} to {range_start + 49}: {count} tickets")
-
     print("Token Count Statistics:")
     display_stats(training_token_counts, "Training Set")
     display_stats(validation_token_counts, "Validation Set")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Format ticket data into JSONL format for model training.")
